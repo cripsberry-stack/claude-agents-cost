@@ -1,0 +1,5 @@
+{
+  "name": "claude-agents-cost",
+  "owner": { "name": "cripsberry-stack" },
+  "plugins": [{ "name": "agents-cost", "source": "./" }]
+}
