@@ -31,6 +31,8 @@ let limits: Limit[] = [] // окна лимитов подписки (пусто
 let now = 0 // текущее время, мс — для отсчёта до сброса
 let timer: { cancel: () => void } | undefined
 let idleTimer: { cancel: () => void } | undefined
+let lastStatusJson = '' // что последним записали для Клодика
+let lastStatusAt = 0 // когда записали
 
 function money(usd: number): string {
   return usd > 0 && usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`
@@ -89,6 +91,66 @@ async function draw($: EngineInterface): Promise<void> {
   } catch {
     // панель не обновилась — строка статуса уже показана
   }
+  void writeStatus($, next)
+}
+
+// ── Клодик: окошко на рабочем столе Windows (desktop/klodik.ps1) ──
+
+// ~/.claude этого компьютера — из пути плагина (он всегда лежит внутри .claude)
+function claudeDir($: EngineInterface): string | undefined {
+  const root = $.plugin.root
+  const m = /^(.*?[\\/]\.claude)(?:[\\/]|$)/.exec(root)
+  return m?.[1]
+}
+
+function isWindows($: EngineInterface): boolean {
+  return /^[A-Za-z]:[\\/]/.test($.plugin.root)
+}
+
+function join(dir: string, name: string): string {
+  return `${dir}${dir.includes('\\') ? '\\' : '/'}${name}`
+}
+
+// Статус для Клодика: при изменении сразу, без изменений — раз в 50 с, чтобы он знал, что Claude Code жив
+async function writeStatus($: EngineInterface, s: Snap): Promise<void> {
+  const dir = claudeDir($)
+  if (!dir) return
+  const body = JSON.stringify({ isBusy: s.isBusy, agents: s.agents, totalUsd: s.totalUsd, limits: s.limits })
+  const at = s.now || Date.now()
+  if (body === lastStatusJson && at - lastStatusAt < 50_000) return
+  lastStatusJson = body
+  lastStatusAt = at
+  try {
+    await $.fs.write(join(join(dir, 'klodik'), 'status.json'), `${body.slice(0, -1)},"updatedAt":${at}}`)
+  } catch {
+    // нет доступа к папке — Клодик просто будет спать
+  }
+}
+
+// /klodik: кладёт окошко в ~/.claude/klodik и запускает (только Windows)
+async function startKlodik($: EngineInterface): Promise<string> {
+  const dir = claudeDir($)
+  if (!isWindows($) || !dir) {
+    return 'Клодик — окошко для рабочего стола Windows. Запусти /klodik в локальном Claude Code на своём ПК (в облачном чате и не на Windows он не работает).'
+  }
+  const target = join(dir, 'klodik')
+  try {
+    const src = join(join($.plugin.root, 'desktop'), 'klodik.ps1')
+    const script = await $.fs.read(src)
+    // Windows PowerShell 5.1 читает кириллицу верно только с BOM
+    await $.fs.write(join(target, 'klodik.ps1'), script.startsWith('\uFEFF') ? script : `\uFEFF${script}`)
+    await $.fs.write(join(target, 'klodik.cmd'), await $.fs.read(join(join($.plugin.root, 'desktop'), 'klodik.cmd')))
+    lastStatusJson = '' // сразу свежий статус
+    await refresh($)
+    await $.process.run(['cmd.exe', '/c', join(target, 'klodik.cmd')], { timeoutMs: 15_000 })
+  } catch (err) {
+    return `Не получилось запустить Клодика: ${String(err)}`
+  }
+  return [
+    'Клодик запущен — он в правом нижнем углу экрана.',
+    'Таскай мышкой куда хочешь, наведи курсор — лимиты, двойной клик — сводка, правый клик — меню и «Выход».',
+    `Запускать без Claude: ${join(target, 'klodik.cmd')}`,
+  ].join('\n')
 }
 
 // Сводка для /limits — по строке на пункт
@@ -213,10 +275,20 @@ export const register: Register = on => {
     } catch {
       // команда не зарегистрировалась — строка статуса и панель всё равно работают
     }
+    try {
+      await $.command.register({
+        name: 'klodik',
+        description: 'Клодик на рабочем столе Windows: перетаскивается, показывает работу и лимиты',
+      })
+    } catch {
+      // без команды Клодика всё остальное работает
+    }
     await refresh($)
     if (!(await read($, isHidden))) await openPane($)
     return result
   })
+
+  on('command.run', { command: 'klodik' }, async $ => ({ text: await startKlodik($) }))
 
   // /limits: показать панель; где панели не встают (телефон) — карточка в чате;
   // текст — только если не получилось ни то ни другое

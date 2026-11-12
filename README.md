@@ -39,6 +39,16 @@ Type `/limits` to get the same summary as a message in the chat — handy in the
 
 While agents are running the line refreshes every 2 seconds; when idle it refreshes once a minute so the reset countdown stays current.
 
+## Клодик on your desktop (Windows)
+
+Type `/klodik` in a local Claude Code session on a Windows PC: a small pixel Claude appears in the bottom-right corner of the screen, on top of every window. Drag him anywhere — he remembers the spot.
+
+- dozes when Claude Code isn't running, breathes and blinks while Claude waits for you, bounces while Claude works;
+- a badge shows how many agents are running; he sweats at 80% of a limit and turns red at 95%;
+- hover for the limits with reset times, double-click for the summary, right-click for the menu (always on top, exit).
+
+He's a borderless PowerShell window (`desktop/klodik.ps1`, nothing to install) that reads `%USERPROFILE%\.claude\klodik\status.json`, which the plugin keeps up to date. To start him without Claude, run `%USERPROFILE%\.claude\klodik\klodik.cmd`; put a shortcut to it in `shell:startup` to have him on every boot. Cloud sessions don't reach your PC, so he only reacts to local Claude Code.
+
 ## Install
 
 At the prompt of a terminal session:

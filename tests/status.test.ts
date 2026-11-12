@@ -206,3 +206,25 @@ test('/limits на телефоне: панель не встала — карт
   )
   await ui.unmount()
 })
+
+test('/klodik вне Windows объясняет, где он работает', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 200000 }, rateLimits: [], cost: { usd: 0 } },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const out = await $.command.run({
+    command: 'klodik',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(out.text?.startsWith('Клодик — окошко для рабочего стола Windows')).toBe(true)
+})
