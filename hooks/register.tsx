@@ -11,6 +11,7 @@ const WARN_PERCENT = 80 // с этого процента лимит помеч�
 const DANGER_PERCENT = 95 // красным
 const BAR_CELLS = 10 // ширина полоски в панели
 const PANE = 'agents-cost-limits'
+const CARD_PREFIX = 'limits-' // карточки /limits в чате
 
 // Подписи окон: короткие для строки статуса, полные для панели
 const SHORT_LABEL: Record<string, string> = { five_hour: '5ч', seven_day: '7д', spend_limit: 'Бюджет' }
@@ -146,6 +147,50 @@ function startPolling($: EngineInterface): void {
   if (!timer) timer = $.clock.every(POLL_MS, () => void refresh($))
 }
 
+type Elements = ReturnType<EngineInterface['ui']['resolve']>
+
+// Полоски лимитов + строка агентов/стоимости; общая для панели и карточки
+function limitsView($: EngineInterface, ui: Elements, s: Snap, hide?: () => Promise<void>) {
+  const { Box, Text, Button } = ui
+  return (
+    <Box flexDirection="column">
+      {s.limits.length === 0 && (
+        <Text dimColor>Лимиты появятся после первого ответа (только на подписке)</Text>
+      )}
+      {s.limits.map(l => {
+        const pct = Math.round(l.percentUsed)
+        const filled = Math.min(BAR_CELLS, Math.max(pct > 0 ? 1 : 0, Math.round((pct / 100) * BAR_CELLS)))
+        const color = pct >= DANGER_PERCENT ? 'error' : pct >= WARN_PERCENT ? 'warning' : 'success'
+        const reset = until(l.resetsAt, s.now)
+        return (
+          <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
+            <Box width={7}>
+              <Text bold>{PANE_LABEL[l.kind] ?? l.kind}</Text>
+            </Box>
+            <Text mono>
+              <Text color={color}>{'█'.repeat(filled)}</Text>
+              <Text color="subtle">{'█'.repeat(BAR_CELLS - filled)}</Text>
+            </Text>
+            <Text bold>{pct}%</Text>
+            {reset && <Text dimColor>сброс через {reset}</Text>}
+          </Box>
+        )
+      })}
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+        <Text dimColor>
+          {s.isBusy ? '⏳' : '🤖'} Агентов: {s.agents}
+          {s.totalUsd !== null ? ` · Эта сессия: ${money(s.totalUsd)} (по ценам API)` : ''}
+        </Text>
+        {hide && (
+          <Button key="hide" role="dismiss" onPress={hide}>
+            Скрыть
+          </Button>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
 async function openPane($: EngineInterface): Promise<void> {
   try {
     await $.ui.open({ id: PANE, title: 'Лимиты' })
@@ -173,11 +218,23 @@ export const register: Register = on => {
     return result
   })
 
-  // /limits: сводка текстом и снова показать панель
+  // /limits: показать панель; где панели не встают (телефон) — карточка в чате;
+  // текст — только если не получилось ни то ни другое
   on('command.run', { command: 'limits' }, async $ => {
     await refresh($)
     await update($, isHidden, () => false)
-    await openPane($)
+    try {
+      if ((await $.ui.open({ id: PANE, title: 'Лимиты' })).isPlaced) return {}
+    } catch {
+      // панели недоступны — пробуем карточку
+    }
+    try {
+      // Новый id на каждый вызов: карточка встаёт в конец чата, а не на старое место
+      const placed = await $.ui.place({ id: `${CARD_PREFIX}${now || Date.now()}` })
+      if (placed.isPlaced) return {}
+    } catch {
+      // и карточку не показать — отвечаем текстом
+    }
     return { text: report() }
   })
 
@@ -188,48 +245,22 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const s = await read($, snap)
-
     const hide = async () => {
       await update($, isHidden, () => true)
       await $.ui.close({ id: PANE })
     }
+    return limitsView($, $.ui.resolve(e), await read($, snap), hide)
+  })
 
+  // Карточка /limits в чате: тот же рисунок с рамкой, без «Скрыть» (она уходит вверх с чатом)
+  on('ui.render', { component: 'Placed' }, async ($, e, next) => {
+    if (e.props.plugin !== 'agents-cost' || !e.props.id.startsWith(CARD_PREFIX)) return next(e)
+    const ui = $.ui.resolve(e)
     return (
-      <Box flexDirection="column">
-        {s.limits.length === 0 && (
-          <Text dimColor>Лимиты появятся после первого ответа (только на подписке)</Text>
-        )}
-        {s.limits.map(l => {
-          const pct = Math.round(l.percentUsed)
-          const filled = Math.min(BAR_CELLS, Math.max(pct > 0 ? 1 : 0, Math.round((pct / 100) * BAR_CELLS)))
-          const color = pct >= DANGER_PERCENT ? 'error' : pct >= WARN_PERCENT ? 'warning' : 'success'
-          const reset = until(l.resetsAt, s.now)
-          return (
-            <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
-              <Box width={7}>
-                <Text bold>{PANE_LABEL[l.kind] ?? l.kind}</Text>
-              </Box>
-              <Text mono>
-                <Text color={color}>{'█'.repeat(filled)}</Text>
-                <Text color="subtle">{'█'.repeat(BAR_CELLS - filled)}</Text>
-              </Text>
-              <Text bold>{pct}%</Text>
-              {reset && <Text dimColor>сброс через {reset}</Text>}
-            </Box>
-          )
-        })}
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
-          <Text dimColor>
-            {s.isBusy ? '⏳' : '🤖'} Агентов: {s.agents}
-            {s.totalUsd !== null ? ` · Эта сессия: ${money(s.totalUsd)} (по ценам API)` : ''}
-          </Text>
-          <Button key="hide" role="dismiss" onPress={hide}>
-            Скрыть
-          </Button>
-        </Box>
-      </Box>
+      <ui.Box borderStyle="round" borderColor="subtle" paddingX={1} flexDirection="column">
+        <ui.Text bold>📊 Лимиты</ui.Text>
+        {limitsView($, ui, await read($, snap))}
+      </ui.Box>
     )
   })
 
