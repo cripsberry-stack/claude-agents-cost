@@ -17,6 +17,24 @@ const CARD_PREFIX = 'limits-' // карточки /limits в чате
 const SHORT_LABEL: Record<string, string> = { five_hour: '5ч', seven_day: '7д', spend_limit: 'Бюджет' }
 const PANE_LABEL: Record<string, string> = { five_hour: '5ч', seven_day: 'Неделя', spend_limit: 'Бюджет' }
 
+// Подпись окна: известные — из таблицы, недельные по моделям (seven_day_opus) — «Неделя Opus»
+function labelOf(kind: string, table: Record<string, string>): string {
+  const known = table[kind]
+  if (known) return known
+  const model = /^seven_day_(.+)$/.exec(kind)?.[1]
+  if (model) return `${table.seven_day} ${model.charAt(0).toUpperCase()}${model.slice(1)}`
+  return kind
+}
+
+// Поверхности, где есть полоса над полем ввода (терминал и десктоп) — там Лимиты рисуются в ней
+async function hasBand($: EngineInterface): Promise<boolean> {
+  try {
+    return (await $.session.surfaces()).some(s => s === 'terminal' || s === 'desktop')
+  } catch {
+    return false
+  }
+}
+
 // Снимок для панели; при смене полей поменять тег shape
 const EMPTY: Snap = { agents: 0, isBusy: false, totalUsd: null, requestUsd: null, limits: [], now: 0 }
 const snap = atom({ plugin: 'agents-cost', key: 'snap' } as const, EMPTY, { shape: 'snap-1' })
@@ -61,7 +79,7 @@ function requestUsd(): number | undefined {
 }
 
 function limitText(l: Limit): string {
-  const label = SHORT_LABEL[l.kind] ?? l.kind
+  const label = labelOf(l.kind, SHORT_LABEL)
   const warn = l.percentUsed >= WARN_PERCENT ? '⚠️' : ''
   const reset = until(l.resetsAt, now)
   return `${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` (↻ ${reset})` : ''}`
@@ -160,7 +178,7 @@ function report(): string {
     lines.push('пока нет данных — появятся после первого ответа (только на подписке)')
   }
   for (const l of limits) {
-    const label = SHORT_LABEL[l.kind] ?? l.kind
+    const label = labelOf(l.kind, SHORT_LABEL)
     const warn = l.percentUsed >= WARN_PERCENT ? '⚠️ ' : ''
     const reset = until(l.resetsAt, now)
     lines.push(`${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` · сброс через ${reset}` : ''}`)
@@ -226,8 +244,8 @@ function limitsView($: EngineInterface, ui: Elements, s: Snap, hide?: () => Prom
         const reset = until(l.resetsAt, s.now)
         return (
           <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
-            <Box width={7}>
-              <Text bold>{PANE_LABEL[l.kind] ?? l.kind}</Text>
+            <Box width={8}>
+              <Text bold>{labelOf(l.kind, PANE_LABEL)}</Text>
             </Box>
             <Text mono>
               <Text color={color}>{'█'.repeat(filled)}</Text>
@@ -284,7 +302,16 @@ export const register: Register = on => {
       // без команды Клодика всё остальное работает
     }
     await refresh($)
-    if (!(await read($, isHidden))) await openPane($)
+    if (await hasBand($)) {
+      // Лимиты рисуются полосой над полем ввода; панель справа от прошлой версии закрываем
+      try {
+        if ((await $.ui.panes()).some(p => p.id === PANE)) await $.ui.close({ id: PANE })
+      } catch {
+        // панели недоступны — нечего закрывать
+      }
+    } else if (!(await read($, isHidden))) {
+      await openPane($)
+    }
     return result
   })
 
@@ -318,6 +345,21 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE && e.origin.kind === 'person') await update($, isHidden, () => true)
     return next(e)
+  })
+
+  // Над полем ввода (терминал и десктоп): сколько агентов работает и сколько стоит запрос
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const s = await read($, snap)
+    const { Box, Text } = $.ui.resolve(e)
+    const parts = [`${s.isBusy ? '⏳' : '🤖'} Агентов: ${s.agents}`]
+    if (s.requestUsd !== null) parts.push(`💸 ${s.isBusy ? 'Запрос сейчас' : 'Запрос'}: ${money(s.requestUsd)}`)
+    if (s.totalUsd !== null) parts.push(`Σ Сессия: ${money(s.totalUsd)} (по ценам API)`)
+    return (
+      <Box flexDirection="row" flexWrap="wrap">
+        <Text dimColor>{parts.join('  ·  ')}</Text>
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
