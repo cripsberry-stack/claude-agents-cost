@@ -54,3 +54,11 @@ From a shell:
 ```bash
 claude plugin install agents-cost --marketplace cripsberry-stack/claude-agents-cost
 ```
+
+## Also in this marketplace: craft-skills
+
+Two third-party skills, credited and licensed as their authors set: `/unslop` (turns AI-looking UI into a designed interface, by [heydamir](https://github.com/heydamir/unslop), CC BY 4.0) and `/tipograf` (Russian typography: «ёлочки», em dashes, non-breaking spaces, by [ircitdev](https://github.com/ircitdev/uspeshnyy-tipograf), MIT). See [plugins/craft-skills](plugins/craft-skills/README.md).
+
+```
+/plugin install craft-skills --marketplace cripsberry-stack/claude-agents-cost
+```

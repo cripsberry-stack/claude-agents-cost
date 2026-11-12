@@ -1,5 +1,16 @@
 {
   "name": "claude-agents-cost",
-  "owner": { "name": "cripsberry-stack" },
-  "plugins": [{ "name": "agents-cost", "source": "./" }]
+  "owner": {
+    "name": "cripsberry-stack"
+  },
+  "plugins": [
+    {
+      "name": "agents-cost",
+      "source": "./"
+    },
+    {
+      "name": "craft-skills",
+      "source": "./plugins/craft-skills"
+    }
+  ]
 }

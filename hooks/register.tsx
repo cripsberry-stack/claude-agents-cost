@@ -223,19 +223,23 @@ export const register: Register = on => {
   on('command.run', { command: 'limits' }, async $ => {
     await refresh($)
     await update($, isHidden, () => false)
+    const why: string[] = [] // почему не встали панель и карточка — пишем под текстом
     try {
-      if ((await $.ui.open({ id: PANE, title: 'Лимиты' })).isPlaced) return {}
-    } catch {
-      // панели недоступны — пробуем карточку
+      const opened = await $.ui.open({ id: PANE, title: 'Лимиты' })
+      if (opened.isPlaced) return {}
+      why.push(`панель: ${opened.reason}`)
+    } catch (err) {
+      why.push(`панель: ${String(err)}`)
     }
     try {
       // Новый id на каждый вызов: карточка встаёт в конец чата, а не на старое место
       const placed = await $.ui.place({ id: `${CARD_PREFIX}${now || Date.now()}` })
       if (placed.isPlaced) return {}
-    } catch {
-      // и карточку не показать — отвечаем текстом
+      why.push(`карточка: ${placed.reason}`)
+    } catch (err) {
+      why.push(`карточка: ${String(err)}`)
     }
-    return { text: report() }
+    return { text: `${report()}\n\n(${why.join('; ')})` }
   })
 
   // Закрыл панель сам (крестик / Esc) — не открываем её снова до /limits
