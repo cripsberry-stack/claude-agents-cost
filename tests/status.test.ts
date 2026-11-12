@@ -140,9 +140,10 @@ test('панель «Лимиты» с полосками рисуется на 
     return { value: { isPlaced: true } }
   })
   on('ui.close', () => ({ value: undefined }))
+  on('session.surfaces', () => ({ value: ['vscode'] })) // полосы над вводом нет — панель открывается сама
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
-  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
   expect(opened).toBe(1)
 
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
@@ -291,4 +292,75 @@ test('над полем ввода: агенты, стоимость запро�
     )
     await ui.unmount()
   }
+})
+
+test('над полем ввода: полоски лимитов, «Скрыть» и /limits без панели справа', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { window: 200000 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 28, resetsAt: '2026-11-12T13:10:00Z' },
+        { kind: 'seven_day', percentUsed: 66, resetsAt: '2026-11-13T00:10:00Z' },
+      ],
+      cost: { usd: 0.95 },
+    },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('ui.panes', () => ({ value: [] }))
+  let opened = 0
+  on('ui.open', () => {
+    opened += 1
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(opened).toBe(0)
+
+  const band = {
+    plugin: 'agents-cost',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isCollapsed: false,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 60,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: {},
+    },
+  } as const
+
+  const ui = await $.ui.mount({ ...band, surface: 'desktop' } as never)
+  expect((await ui.find({ type: 'Text', text: /^Неделя$/ }))?.text).toBe('Неделя')
+  expect((await ui.find({ type: 'Text', text: /^66%$/ }))?.text).toBe('66%')
+  expect((await ui.find({ type: 'Text', text: /сброс через 12ч 10м/ }))?.text).toBe('сброс через 12ч 10м')
+  expect((await ui.find({ type: 'Text', text: /Агентов/ }))?.text).toBe(
+    '🤖 Агентов: 0  ·  Σ Сессия: $0.95 (по ценам API)',
+  )
+
+  // «Скрыть» убирает полоски, строка агентов остаётся
+  await ui.press({ key: 'hide' })
+  expect(await ui.find({ type: 'Text', text: /^66%$/ })).toBe(undefined)
+  expect((await ui.find({ type: 'Text', text: /Агентов/ }))?.text).toBe(
+    '🤖 Агентов: 0  ·  Σ Сессия: $0.95 (по ценам API)',
+  )
+
+  // /limits возвращает полоски над полем ввода и не открывает панель справа
+  const out = await $.command.run({
+    command: 'limits',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(out.text).toBe(undefined)
+  expect(opened).toBe(0)
+  expect((await ui.find({ type: 'Text', text: /^66%$/ }))?.text).toBe('66%')
+  await ui.unmount()
 })

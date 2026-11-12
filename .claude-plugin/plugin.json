@@ -1,1 +1,1 @@
-{"name": "agents-cost", "version": "0.6.0", "description": "Над полем ввода: сколько агентов работает и сколько стоил запрос (по ценам API); /limits — панель лимитов 5ч/неделя; /klodik — Клодик на рабочем столе Windows", "types": "./types/index.d.ts"}
+{"name": "agents-cost", "version": "0.7.0", "description": "Над полем ввода: полоски лимитов 5ч/неделя, сколько агентов работает и сколько стоил запрос (по ценам API); /limits — вернуть полоски; /klodik — Клодик на рабочем столе Windows", "types": "./types/index.d.ts"}
