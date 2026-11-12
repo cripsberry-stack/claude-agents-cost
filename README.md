@@ -1,16 +1,17 @@
 # agents-cost
 
-Claude Code mod that pins a status line under the prompt showing how many agents are running right now, what the current request costs, and what the whole session has cost so far:
+Claude Code mod that pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
 
 ```
-⏳ Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ Сессия: $0.80
+⏳ Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ по API: $0.80  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)
 ```
 
 - `⏳` — Claude is answering, `🤖` — waiting for you; next to it, the number of running subagents.
 - `💸 Запрос` — cost of the current request (grows live while it runs, then shows the final figure).
-- `Σ Сессия` — total for the session, the same figure `/cost` shows (API list prices).
+- `Σ по API` — total for the session at API list prices, the same figure `/cost` shows (what you would have paid without a subscription).
+- `5ч` / `7д` — how much of the 5-hour and weekly plan limits is used, and `↻` how long until each resets. `⚠️` marks a limit at 80% or more. Shown only on a subscription, after the first response of the session.
 
-While agents are running the line refreshes every 2 seconds; when everything is idle polling stops.
+While agents are running the line refreshes every 2 seconds; when idle it refreshes once a minute so the reset countdown stays current.
 
 ## Install
 

@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+const NOW = Date.parse('2026-11-12T12:00:00Z')
+
 test('строка показывает агентов, стоимость запроса и сессии', async ($, on) => {
   const statuses: (string | undefined)[] = []
   let usd = 0.5
@@ -22,12 +24,13 @@ test('строка показывает агентов, стоимость за�
     })),
   }))
   on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  expect(statuses.at(-1)).toBe('🤖 Агентов: 0  ·  Σ Сессия: $0.50')
+  expect(statuses.at(-1)).toBe('🤖 Агентов: 0  ·  Σ по API: $0.50')
 
   // Запрос пошёл: запустились 2 агента, потрачено 30 центов
   await $.turn.start({ text: 'сделай сайт', turnId: 't1' })
@@ -41,5 +44,33 @@ test('строка показывает агентов, стоимость за�
     reason: 'completed',
   } as never)
 
-  expect(statuses.at(-1)).toBe('🤖 Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ Сессия: $0.80')
+  expect(statuses.at(-1)).toBe('🤖 Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ по API: $0.80')
+})
+
+test('строка показывает лимиты 5ч / 7д и время до сброса', async ($, on) => {
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push(e.text)
+    return { value: undefined }
+  })
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { window: 200000 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 23.5, resetsAt: '2026-11-12T14:10:00Z' },
+        { kind: 'seven_day', percentUsed: 86, resetsAt: '2026-11-15T16:00:00Z' },
+      ],
+      cost: { usd: 1.25 },
+    },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(statuses.at(-1)).toBe(
+    '🤖 Агентов: 0  ·  Σ по API: $1.25  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)',
+  )
 })
