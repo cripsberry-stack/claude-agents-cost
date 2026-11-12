@@ -1,10 +1,22 @@
 # agents-cost
 
-Claude Code mod that pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
+Claude Code mod that opens a **«Лимиты»** panel above the prompt (on every surface: terminal, desktop, and the mobile/web apps) and pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
 
 ```
 ⏳ Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ по API: $0.80  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)
 ```
+
+The panel:
+
+```
+5ч      █░░░░░░░░░  1%   сброс через 4ч 55м
+Неделя  █░░░░░░░░░  11%  сброс через 4д 18ч
+🤖 Агентов: 0 · Эта сессия: $0.30 (по ценам API)   [Скрыть]
+```
+
+Bars turn yellow at 80% and red at 95%. **Скрыть** hides the panel until you run `/limits` again.
+
+The status line:
 
 - `⏳` — Claude is answering, `🤖` — waiting for you; next to it, the number of running subagents.
 - `💸 Запрос` — cost of the current request (grows live while it runs, then shows the final figure).
