@@ -70,7 +70,9 @@ test('строка показывает лимиты 5ч / 7д и время д�
   on('agent.list', () => ({ value: [] }))
   on('clock.every', () => ({ value: undefined }))
   on('clock.now', () => ({ value: NOW }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  // ни панель, ни карточка здесь не встают
+  on('ui.open', () => ({ value: { isPlaced: false, reason: 'no panes' } }))
+  on('ui.place', () => ({ value: { isPlaced: false, reason: 'no surface' } }))
   on('ui.close', () => ({ value: undefined }))
   on('command.register', () => ({ value: { command: 'limits' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -80,7 +82,7 @@ test('строка показывает лимиты 5ч / 7д и время д�
     '🤖 Агентов: 0  ·  Σ по API: $1.25  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)',
   )
 
-  // /limits — та же сводка текстом в чат
+  // /limits там, где не встают ни панель, ни карточка — сводка текстом
   const out = await $.command.run({
     command: 'limits',
     args: '',
@@ -153,4 +155,52 @@ test('панель «Лимиты» с полосками рисуется на 
     )
     await ui.unmount()
   }
+})
+
+test('/limits на телефоне: панель не встала — карточка с полосками в чате, без текста', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { window: 200000 },
+      rateLimits: [{ kind: 'five_hour', percentUsed: 30, resetsAt: '2026-11-12T14:54:00Z' }],
+      cost: { usd: 3.37 },
+    },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
+  on('ui.open', () => ({ value: { isPlaced: false, reason: 'mobile places no panes' } }))
+  const places: string[] = []
+  on('ui.place', (_, e) => {
+    places.push(e.id)
+    return { value: { isPlaced: true, requestId: 'r1' } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  const out = await $.command.run({
+    command: 'limits',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 40 },
+  })
+  expect(out.text).toBe(undefined)
+  expect(places.length).toBe(1)
+
+  const ui = await $.ui.mount({
+    plugin: 'agents-cost',
+    component: 'Placed',
+    requestId: 'r1',
+    props: { id: places[0]!, plugin: 'agents-cost' },
+    surface: 'mobile',
+  })
+  expect((await ui.find({ type: 'Text', text: /^📊 Лимиты$/ }))?.text).toBe('📊 Лимиты')
+  expect((await ui.find({ type: 'Text', text: /^30%$/ }))?.text).toBe('30%')
+  expect((await ui.find({ type: 'Text', text: /сброс через/ }))?.text).toBe('сброс через 2ч 54м')
+  expect((await ui.find({ type: 'Text', text: /по ценам API/ }))?.text).toBe(
+    '🤖 Агентов: 0 · Эта сессия: $3.37 (по ценам API)',
+  )
+  await ui.unmount()
 })

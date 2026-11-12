@@ -16,6 +16,8 @@ The panel:
 
 Bars turn yellow at 80% and red at 95%. **Скрыть** hides the panel until you run `/limits` again.
 
+`/limits` opens the panel. Where a surface doesn't seat panels (the mobile app), it drops the same bars into the chat as a card that keeps updating; plain text is the last fallback.
+
 The status line:
 
 - `⏳` — Claude is answering, `🤖` — waiting for you; next to it, the number of running subagents.
