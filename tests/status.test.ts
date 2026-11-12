@@ -25,6 +25,9 @@ test('строка показывает агентов, стоимость за�
   }))
   on('clock.every', () => ({ value: undefined }))
   on('clock.now', () => ({ value: NOW }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
@@ -67,10 +70,87 @@ test('строка показывает лимиты 5ч / 7д и время д�
   on('agent.list', () => ({ value: [] }))
   on('clock.every', () => ({ value: undefined }))
   on('clock.now', () => ({ value: NOW }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(statuses.at(-1)).toBe(
     '🤖 Агентов: 0  ·  Σ по API: $1.25  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)',
   )
+
+  // /limits — та же сводка текстом в чат
+  const out = await $.command.run({
+    command: 'limits',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(out.text).toBe(
+    [
+      '📊 Лимиты',
+      '5ч: 24% · сброс через 2ч 10м',
+      '⚠️ 7д: 86% · сброс через 3д 4ч',
+      '',
+      '🤖 Агентов работает: 0',
+      'Σ Сессия по API: $1.25',
+    ].join('\n'),
+  )
+})
+
+const PANE = {
+  plugin: 'agents-cost',
+  component: 'Pane',
+  requestId: 'agents-cost-limits',
+  props: {
+    title: 'Лимиты',
+    isFocused: false,
+    bodyColumns: 40,
+    placement: 'inline',
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  },
+} as const
+
+test('панель «Лимиты» с полосками рисуется на всех поверхностях', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { window: 200000 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 1, resetsAt: '2026-11-12T16:55:00Z' },
+        { kind: 'seven_day', percentUsed: 11, resetsAt: '2026-11-17T06:00:00Z' },
+      ],
+      cost: { usd: 0.3 },
+    },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
+  let opened = 0
+  on('ui.open', () => {
+    opened += 1
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', () => ({ value: undefined }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  expect(opened).toBe(1)
+
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.find({ type: 'Text', text: /^Неделя$/ }))?.text).toBe('Неделя')
+    expect((await ui.find({ type: 'Text', text: /^11%$/ }))?.text).toBe('11%')
+    expect((await ui.find({ type: 'Text', text: /сброс через 4д 18ч/ }))?.text).toBe(
+      'сброс через 4д 18ч',
+    )
+    expect((await ui.find({ type: 'Text', text: /по ценам API/ }))?.text).toBe(
+      '🤖 Агентов: 0 · Эта сессия: $0.30 (по ценам API)',
+    )
+    await ui.unmount()
+  }
 })
