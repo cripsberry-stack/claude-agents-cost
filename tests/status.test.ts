@@ -206,3 +206,89 @@ test('/limits на телефоне: панель не встала — карт
   )
   await ui.unmount()
 })
+
+test('/klodik вне Windows объясняет, где он работает', async ($, on) => {
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 200000 }, rateLimits: [], cost: { usd: 0 } },
+  }))
+  on('agent.list', () => ({ value: [] }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const out = await $.command.run({
+    command: 'klodik',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(out.text?.startsWith('Клодик — окошко для рабочего стола Windows')).toBe(true)
+})
+
+test('над полем ввода: агенты, стоимость запроса и сессии; панель справа сама не открывается', async ($, on) => {
+  let usd = 0.5
+  let running = 0
+  on('ui.status', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 200000 }, rateLimits: [], cost: { usd } },
+  }))
+  on('agent.list', () => ({
+    value: Array.from({ length: running }, (_, i) => ({
+      id: `a${i}`,
+      description: 'task',
+      type: 'general-purpose',
+      status: 'running' as const,
+    })),
+  }))
+  on('clock.every', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: NOW }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('ui.panes', () => ({ value: [] }))
+  let opened = 0
+  on('ui.open', () => {
+    opened += 1
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(opened).toBe(0)
+
+  await $.turn.start({ text: 'сделай сайт', turnId: 't1' })
+  running = 2
+  usd = 0.8
+  await $.turn.complete({
+    answer: 'готово',
+    durationMs: 1000,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'completed',
+  } as never)
+
+  const band = {
+    plugin: 'agents-cost',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isCollapsed: false,
+      isWorking: false,
+      maxRows: 10,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: {},
+    },
+  } as const
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...band, surface } as never)
+    expect((await ui.find({ type: 'Text', text: /Агентов/ }))?.text).toBe(
+      '🤖 Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ Сессия: $0.80 (по ценам API)',
+    )
+    await ui.unmount()
+  }
+})

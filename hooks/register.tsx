@@ -17,6 +17,24 @@ const CARD_PREFIX = 'limits-' // карточки /limits в чате
 const SHORT_LABEL: Record<string, string> = { five_hour: '5ч', seven_day: '7д', spend_limit: 'Бюджет' }
 const PANE_LABEL: Record<string, string> = { five_hour: '5ч', seven_day: 'Неделя', spend_limit: 'Бюджет' }
 
+// Подпись окна: известные — из таблицы, недельные по моделям (seven_day_opus) — «Неделя Opus»
+function labelOf(kind: string, table: Record<string, string>): string {
+  const known = table[kind]
+  if (known) return known
+  const model = /^seven_day_(.+)$/.exec(kind)?.[1]
+  if (model) return `${table.seven_day} ${model.charAt(0).toUpperCase()}${model.slice(1)}`
+  return kind
+}
+
+// Поверхности, где есть полоса над полем ввода (терминал и десктоп) — там Лимиты рисуются в ней
+async function hasBand($: EngineInterface): Promise<boolean> {
+  try {
+    return (await $.session.surfaces()).some(s => s === 'terminal' || s === 'desktop')
+  } catch {
+    return false
+  }
+}
+
 // Снимок для панели; при смене полей поменять тег shape
 const EMPTY: Snap = { agents: 0, isBusy: false, totalUsd: null, requestUsd: null, limits: [], now: 0 }
 const snap = atom({ plugin: 'agents-cost', key: 'snap' } as const, EMPTY, { shape: 'snap-1' })
@@ -31,6 +49,8 @@ let limits: Limit[] = [] // окна лимитов подписки (пусто
 let now = 0 // текущее время, мс — для отсчёта до сброса
 let timer: { cancel: () => void } | undefined
 let idleTimer: { cancel: () => void } | undefined
+let lastStatusJson = '' // что последним записали для Клодика
+let lastStatusAt = 0 // когда записали
 
 function money(usd: number): string {
   return usd > 0 && usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`
@@ -59,7 +79,7 @@ function requestUsd(): number | undefined {
 }
 
 function limitText(l: Limit): string {
-  const label = SHORT_LABEL[l.kind] ?? l.kind
+  const label = labelOf(l.kind, SHORT_LABEL)
   const warn = l.percentUsed >= WARN_PERCENT ? '⚠️' : ''
   const reset = until(l.resetsAt, now)
   return `${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` (↻ ${reset})` : ''}`
@@ -89,6 +109,66 @@ async function draw($: EngineInterface): Promise<void> {
   } catch {
     // панель не обновилась — строка статуса уже показана
   }
+  void writeStatus($, next)
+}
+
+// ── Клодик: окошко на рабочем столе Windows (desktop/klodik.ps1) ──
+
+// ~/.claude этого компьютера — из пути плагина (он всегда лежит внутри .claude)
+function claudeDir($: EngineInterface): string | undefined {
+  const root = $.plugin.root
+  const m = /^(.*?[\\/]\.claude)(?:[\\/]|$)/.exec(root)
+  return m?.[1]
+}
+
+function isWindows($: EngineInterface): boolean {
+  return /^[A-Za-z]:[\\/]/.test($.plugin.root)
+}
+
+function join(dir: string, name: string): string {
+  return `${dir}${dir.includes('\\') ? '\\' : '/'}${name}`
+}
+
+// Статус для Клодика: при изменении сразу, без изменений — раз в 50 с, чтобы он знал, что Claude Code жив
+async function writeStatus($: EngineInterface, s: Snap): Promise<void> {
+  const dir = claudeDir($)
+  if (!dir) return
+  const body = JSON.stringify({ isBusy: s.isBusy, agents: s.agents, totalUsd: s.totalUsd, limits: s.limits })
+  const at = s.now || Date.now()
+  if (body === lastStatusJson && at - lastStatusAt < 50_000) return
+  lastStatusJson = body
+  lastStatusAt = at
+  try {
+    await $.fs.write(join(join(dir, 'klodik'), 'status.json'), `${body.slice(0, -1)},"updatedAt":${at}}`)
+  } catch {
+    // нет доступа к папке — Клодик просто будет спать
+  }
+}
+
+// /klodik: кладёт окошко в ~/.claude/klodik и запускает (только Windows)
+async function startKlodik($: EngineInterface): Promise<string> {
+  const dir = claudeDir($)
+  if (!isWindows($) || !dir) {
+    return 'Клодик — окошко для рабочего стола Windows. Запусти /klodik в локальном Claude Code на своём ПК (в облачном чате и не на Windows он не работает).'
+  }
+  const target = join(dir, 'klodik')
+  try {
+    const src = join(join($.plugin.root, 'desktop'), 'klodik.ps1')
+    const script = await $.fs.read(src)
+    // Windows PowerShell 5.1 читает кириллицу верно только с BOM
+    await $.fs.write(join(target, 'klodik.ps1'), script.startsWith('\uFEFF') ? script : `\uFEFF${script}`)
+    await $.fs.write(join(target, 'klodik.cmd'), await $.fs.read(join(join($.plugin.root, 'desktop'), 'klodik.cmd')))
+    lastStatusJson = '' // сразу свежий статус
+    await refresh($)
+    await $.process.run(['cmd.exe', '/c', join(target, 'klodik.cmd')], { timeoutMs: 15_000 })
+  } catch (err) {
+    return `Не получилось запустить Клодика: ${String(err)}`
+  }
+  return [
+    'Клодик запущен — он в правом нижнем углу экрана.',
+    'Таскай мышкой куда хочешь, наведи курсор — лимиты, двойной клик — сводка, правый клик — меню и «Выход».',
+    `Запускать без Claude: ${join(target, 'klodik.cmd')}`,
+  ].join('\n')
 }
 
 // Сводка для /limits — по строке на пункт
@@ -98,7 +178,7 @@ function report(): string {
     lines.push('пока нет данных — появятся после первого ответа (только на подписке)')
   }
   for (const l of limits) {
-    const label = SHORT_LABEL[l.kind] ?? l.kind
+    const label = labelOf(l.kind, SHORT_LABEL)
     const warn = l.percentUsed >= WARN_PERCENT ? '⚠️ ' : ''
     const reset = until(l.resetsAt, now)
     lines.push(`${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` · сброс через ${reset}` : ''}`)
@@ -164,8 +244,8 @@ function limitsView($: EngineInterface, ui: Elements, s: Snap, hide?: () => Prom
         const reset = until(l.resetsAt, s.now)
         return (
           <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
-            <Box width={7}>
-              <Text bold>{PANE_LABEL[l.kind] ?? l.kind}</Text>
+            <Box width={8}>
+              <Text bold>{labelOf(l.kind, PANE_LABEL)}</Text>
             </Box>
             <Text mono>
               <Text color={color}>{'█'.repeat(filled)}</Text>
@@ -213,10 +293,29 @@ export const register: Register = on => {
     } catch {
       // команда не зарегистрировалась — строка статуса и панель всё равно работают
     }
+    try {
+      await $.command.register({
+        name: 'klodik',
+        description: 'Клодик на рабочем столе Windows: перетаскивается, показывает работу и лимиты',
+      })
+    } catch {
+      // без команды Клодика всё остальное работает
+    }
     await refresh($)
-    if (!(await read($, isHidden))) await openPane($)
+    if (await hasBand($)) {
+      // Лимиты рисуются полосой над полем ввода; панель справа от прошлой версии закрываем
+      try {
+        if ((await $.ui.panes()).some(p => p.id === PANE)) await $.ui.close({ id: PANE })
+      } catch {
+        // панели недоступны — нечего закрывать
+      }
+    } else if (!(await read($, isHidden))) {
+      await openPane($)
+    }
     return result
   })
+
+  on('command.run', { command: 'klodik' }, async $ => ({ text: await startKlodik($) }))
 
   // /limits: показать панель; где панели не встают (телефон) — карточка в чате;
   // текст — только если не получилось ни то ни другое
@@ -246,6 +345,21 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE && e.origin.kind === 'person') await update($, isHidden, () => true)
     return next(e)
+  })
+
+  // Над полем ввода (терминал и десктоп): сколько агентов работает и сколько стоит запрос
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const s = await read($, snap)
+    const { Box, Text } = $.ui.resolve(e)
+    const parts = [`${s.isBusy ? '⏳' : '🤖'} Агентов: ${s.agents}`]
+    if (s.requestUsd !== null) parts.push(`💸 ${s.isBusy ? 'Запрос сейчас' : 'Запрос'}: ${money(s.requestUsd)}`)
+    if (s.totalUsd !== null) parts.push(`Σ Сессия: ${money(s.totalUsd)} (по ценам API)`)
+    return (
+      <Box flexDirection="row" flexWrap="wrap">
+        <Text dimColor>{parts.join('  ·  ')}</Text>
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

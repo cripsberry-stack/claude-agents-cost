@@ -1,6 +1,12 @@
 # agents-cost
 
-Claude Code mod that opens a **«Лимиты»** panel above the prompt (on every surface: terminal, desktop, and the mobile/web apps) and pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
+Right above the input box (terminal and desktop app), one quiet line shows how many agents are running and what the current request costs at API prices — live while Claude works:
+
+```
+⏳ Агентов: 2  ·  💸 Запрос сейчас: $0.30  ·  Σ Сессия: $0.80 (по ценам API)
+```
+
+Type `/limits` for the **«Лимиты»** panel. Claude Code mod that opens a **«Лимиты»** panel above the prompt (on every surface: terminal, desktop, and the mobile/web apps) and pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
 
 ```
 ⏳ Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ по API: $0.80  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)
@@ -38,6 +44,16 @@ Type `/limits` to get the same summary as a message in the chat — handy in the
 ```
 
 While agents are running the line refreshes every 2 seconds; when idle it refreshes once a minute so the reset countdown stays current.
+
+## Клодик on your desktop (Windows)
+
+Type `/klodik` in a local Claude Code session on a Windows PC: a small pixel Claude appears in the bottom-right corner of the screen, on top of every window. Drag him anywhere — he remembers the spot.
+
+- dozes when Claude Code isn't running, breathes and blinks while Claude waits for you, bounces while Claude works;
+- a badge shows how many agents are running; he sweats at 80% of a limit and turns red at 95%;
+- hover for the limits with reset times, double-click for the summary, right-click for the menu (always on top, exit).
+
+He's a borderless PowerShell window (`desktop/klodik.ps1`, nothing to install) that reads `%USERPROFILE%\.claude\klodik\status.json`, which the plugin keeps up to date. To start him without Claude, run `%USERPROFILE%\.claude\klodik\klodik.cmd`; put a shortcut to it in `shell:startup` to have him on every boot. Cloud sessions don't reach your PC, so he only reacts to local Claude Code.
 
 ## Install
 
