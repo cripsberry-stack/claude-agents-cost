@@ -45,16 +45,41 @@ function limitText(l: SessionRateLimit): string {
   return `${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` (↻ ${reset})` : ''}`
 }
 
+// Стоимость текущего (идёт) или прошлого запроса
+function requestUsd(): number | undefined {
+  if (totalUsd === undefined) return undefined
+  const usd = isBusy && turnStartUsd !== undefined ? totalUsd - turnStartUsd : lastRequestUsd
+  return usd === undefined ? undefined : Math.max(0, usd)
+}
+
 function draw($: EngineInterface): void {
   const parts = [`${isBusy ? '⏳' : '🤖'} Агентов: ${agents}`]
   if (totalUsd !== undefined) {
-    const request =
-      isBusy && turnStartUsd !== undefined ? totalUsd - turnStartUsd : lastRequestUsd
-    if (request !== undefined) parts.push(`💸 Запрос: ${money(Math.max(0, request))}`)
+    const request = requestUsd()
+    if (request !== undefined) parts.push(`💸 Запрос: ${money(request)}`)
     parts.push(`Σ по API: ${money(totalUsd)}`)
   }
   for (const l of limits) parts.push(limitText(l))
   $.ui.status(parts.join('  ·  '))
+}
+
+// Сводка для /limits — по строке на пункт, удобно читать с телефона
+function report(): string {
+  const lines = ['📊 Лимиты']
+  if (limits.length === 0) {
+    lines.push('пока нет данных — появятся после первого ответа (только на подписке)')
+  }
+  for (const l of limits) {
+    const label = LIMIT_LABEL[l.kind] ?? l.kind
+    const warn = l.percentUsed >= WARN_PERCENT ? '⚠️ ' : ''
+    const reset = until(l.resetsAt)
+    lines.push(`${warn}${label}: ${Math.round(l.percentUsed)}%${reset ? ` · сброс через ${reset}` : ''}`)
+  }
+  lines.push('', `🤖 Агентов работает: ${agents}`)
+  const request = requestUsd()
+  if (request !== undefined) lines.push(`💸 Последний запрос: ${money(request)}`)
+  if (totalUsd !== undefined) lines.push(`Σ Сессия по API: ${money(totalUsd)}`)
+  return lines.join('\n')
 }
 
 // Читает стоимость сессии и попутно обновляет лимиты и время
@@ -100,8 +125,21 @@ export const register: Register = on => {
     // Медленный опрос в простое: лимиты и отсчёт до сброса всегда свежие
     idleTimer?.cancel()
     idleTimer = $.clock.every(IDLE_POLL_MS, () => void refresh($))
+    try {
+      await $.command.register({
+        name: 'limits',
+        description: 'Лимиты 5ч/7д, сколько агентов работает и стоимость сессии по API',
+      })
+    } catch {
+      // команда не зарегистрировалась — строка статуса всё равно работает
+    }
     await refresh($)
     return result
+  })
+
+  on('command.run', { command: 'limits' }, async $ => {
+    await refresh($) // свежие цифры на момент вызова
+    return { text: report() }
   })
 
   on('turn.start', async ($, e, next) => {

@@ -11,6 +11,18 @@ Claude Code mod that pins a status line under the prompt showing how many agents
 - `Σ по API` — total for the session at API list prices, the same figure `/cost` shows (what you would have paid without a subscription).
 - `5ч` / `7д` — how much of the 5-hour and weekly plan limits is used, and `↻` how long until each resets. `⚠️` marks a limit at 80% or more. Shown only on a subscription, after the first response of the session.
 
+Type `/limits` to get the same summary as a message in the chat — handy in the mobile and web apps, which don't draw the status line:
+
+```
+📊 Лимиты
+5ч: 24% · сброс через 2ч 10м
+⚠️ 7д: 86% · сброс через 3д 4ч
+
+🤖 Агентов работает: 2
+💸 Последний запрос: $0.30
+Σ Сессия по API: $0.80
+```
+
 While agents are running the line refreshes every 2 seconds; when idle it refreshes once a minute so the reset countdown stays current.
 
 ## Install

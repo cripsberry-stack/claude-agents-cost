@@ -25,6 +25,7 @@ test('строка показывает агентов, стоимость за�
   }))
   on('clock.every', () => ({ value: undefined }))
   on('clock.now', () => ({ value: NOW }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
@@ -67,10 +68,29 @@ test('строка показывает лимиты 5ч / 7д и время д�
   on('agent.list', () => ({ value: [] }))
   on('clock.every', () => ({ value: undefined }))
   on('clock.now', () => ({ value: NOW }))
+  on('command.register', () => ({ value: { command: 'limits' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(statuses.at(-1)).toBe(
     '🤖 Агентов: 0  ·  Σ по API: $1.25  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)',
+  )
+
+  // /limits — та же сводка текстом в чат
+  const out = await $.command.run({
+    command: 'limits',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+  expect(out.text).toBe(
+    [
+      '📊 Лимиты',
+      '5ч: 24% · сброс через 2ч 10м',
+      '⚠️ 7д: 86% · сброс через 3д 4ч',
+      '',
+      '🤖 Агентов работает: 0',
+      'Σ Сессия по API: $1.25',
+    ].join('\n'),
   )
 })
