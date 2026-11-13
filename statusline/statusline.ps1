@@ -3,7 +3,8 @@
 # 🤖 — сколько агентов работает (если стоит плагин agents-cost), полоска — заполнение контекста,
 # 5ч / нед — лимиты подписки, 💸 — сколько стоил текущий запрос, Σ — вся сессия по ценам API.
 # Настройка в ~/.claude/settings.json:
-#   "statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<ты>/.claude/statusline.ps1", "refreshInterval": 2 }
+#   "statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<ты>/.claude/statusline.ps1" }
+# Без refreshInterval: запуск PowerShell тяжёлый, а строка и так обновляется после каждого ответа Claude.
 
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

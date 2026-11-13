@@ -89,10 +89,10 @@ Two third-party skills, credited and licensed as their authors set: `/unslop` (t
 🤖 2 · ■■■■□□□□ 49% · 5ч 75% ↻2ч10м · нед 46% ↻3д4ч · 💸 $0.30 · Σ $4.33 API
 ```
 
-Agents (from this plugin, when installed), context fill, the 5-hour and weekly limits with time to reset, what the current request cost and the whole session at API prices. Copy it to `~/.claude/statusline.ps1` and add to `~/.claude/settings.json`:
+Agents (from this plugin, when installed), context fill, the 5-hour and weekly limits with time to reset, what the current request cost and the whole session at API prices. Copy it to `~/.claude/statusline.ps1` and add to `~/.claude/settings.json` (no `refreshInterval`: starting PowerShell is heavy, and the line already refreshes after every reply):
 
 ```json
-"statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<you>/.claude/statusline.ps1", "refreshInterval": 2 }
+"statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<you>/.claude/statusline.ps1" }
 ```
 
 On Linux, macOS and in cloud sessions use `statusline/statusline.js` (Node.js, same line without the agents count):
