@@ -94,3 +94,9 @@ Agents (from this plugin, when installed), context fill, the 5-hour and weekly l
 ```json
 "statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<you>/.claude/statusline.ps1", "refreshInterval": 2 }
 ```
+
+On Linux, macOS and in cloud sessions use `statusline/statusline.js` (Node.js, same line without the agents count):
+
+```json
+"statusLine": { "type": "command", "command": "node ~/.claude/statusline.js", "refreshInterval": 2 }
+```
