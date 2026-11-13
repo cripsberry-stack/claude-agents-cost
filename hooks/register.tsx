@@ -27,13 +27,15 @@ function labelOf(kind: string, table: Record<string, string>): string {
 }
 
 // Поверхности, где есть полоса над полем ввода (терминал и десктоп) — там Лимиты рисуются в ней
-async function hasBand($: EngineInterface): Promise<boolean> {
+async function surfaceList($: EngineInterface): Promise<readonly string[]> {
   try {
-    return (await $.session.surfaces()).some(s => s === 'terminal' || s === 'desktop')
+    return await $.session.surfaces()
   } catch {
-    return false
+    return [] // не знаем — считаем, что ничего не рисует
   }
 }
+
+const hasBand = (list: readonly string[]) => list.some(s => s === 'terminal' || s === 'desktop')
 
 // Снимок для панели; при смене полей поменять тег shape
 const EMPTY: Snap = { agents: 0, isBusy: false, totalUsd: null, requestUsd: null, limits: [], now: 0 }
@@ -229,6 +231,30 @@ function startPolling($: EngineInterface): void {
 
 type Elements = ReturnType<EngineInterface['ui']['resolve']>
 
+// Строки с полосками лимитов: общие для панели, карточки и полосы над полем ввода
+function limitRows(ui: Elements, s: Snap) {
+  const { Box, Text } = ui
+  return s.limits.map(l => {
+    const pct = Math.round(l.percentUsed)
+    const filled = Math.min(BAR_CELLS, Math.max(pct > 0 ? 1 : 0, Math.round((pct / 100) * BAR_CELLS)))
+    const color = pct >= DANGER_PERCENT ? 'error' : pct >= WARN_PERCENT ? 'warning' : 'success'
+    const reset = until(l.resetsAt, s.now)
+    return (
+      <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
+        <Box width={8}>
+          <Text bold>{labelOf(l.kind, PANE_LABEL)}</Text>
+        </Box>
+        <Text mono>
+          <Text color={color}>{'█'.repeat(filled)}</Text>
+          <Text color="subtle">{'█'.repeat(BAR_CELLS - filled)}</Text>
+        </Text>
+        <Text bold>{pct}%</Text>
+        {reset && <Text dimColor>сброс через {reset}</Text>}
+      </Box>
+    )
+  })
+}
+
 // Полоски лимитов + строка агентов/стоимости; общая для панели и карточки
 function limitsView($: EngineInterface, ui: Elements, s: Snap, hide?: () => Promise<void>) {
   const { Box, Text, Button } = ui
@@ -237,25 +263,7 @@ function limitsView($: EngineInterface, ui: Elements, s: Snap, hide?: () => Prom
       {s.limits.length === 0 && (
         <Text dimColor>Лимиты появятся после первого ответа (только на подписке)</Text>
       )}
-      {s.limits.map(l => {
-        const pct = Math.round(l.percentUsed)
-        const filled = Math.min(BAR_CELLS, Math.max(pct > 0 ? 1 : 0, Math.round((pct / 100) * BAR_CELLS)))
-        const color = pct >= DANGER_PERCENT ? 'error' : pct >= WARN_PERCENT ? 'warning' : 'success'
-        const reset = until(l.resetsAt, s.now)
-        return (
-          <Box key={l.kind} flexDirection="row" flexWrap="wrap" columnGap={1}>
-            <Box width={8}>
-              <Text bold>{labelOf(l.kind, PANE_LABEL)}</Text>
-            </Box>
-            <Text mono>
-              <Text color={color}>{'█'.repeat(filled)}</Text>
-              <Text color="subtle">{'█'.repeat(BAR_CELLS - filled)}</Text>
-            </Text>
-            <Text bold>{pct}%</Text>
-            {reset && <Text dimColor>сброс через {reset}</Text>}
-          </Box>
-        )
-      })}
+      {limitRows(ui, s)}
       <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
         <Text dimColor>
           {s.isBusy ? '⏳' : '🤖'} Агентов: {s.agents}
@@ -302,14 +310,16 @@ export const register: Register = on => {
       // без команды Клодика всё остальное работает
     }
     await refresh($)
-    if (await hasBand($)) {
+    const surfaces = await surfaceList($)
+    if (hasBand(surfaces)) {
       // Лимиты рисуются полосой над полем ввода; панель справа от прошлой версии закрываем
       try {
         if ((await $.ui.panes()).some(p => p.id === PANE)) await $.ui.close({ id: PANE })
       } catch {
         // панели недоступны — нечего закрывать
       }
-    } else if (!(await read($, isHidden))) {
+    } else if (surfaces.length > 0 && !(await read($, isHidden))) {
+      // полосы нет (VS Code) — открываем панель; пустой список — поверхность ещё не подключилась
       await openPane($)
     }
     return result
@@ -317,11 +327,12 @@ export const register: Register = on => {
 
   on('command.run', { command: 'klodik' }, async $ => ({ text: await startKlodik($) }))
 
-  // /limits: показать панель; где панели не встают (телефон) — карточка в чате;
-  // текст — только если не получилось ни то ни другое
+  // /limits: вернуть полоски над полем ввода (терминал, десктоп); где полосы нет — панель;
+  // где панели не встают (телефон) — карточка в чате; текст — если не получилось ничего
   on('command.run', { command: 'limits' }, async $ => {
     await refresh($)
     await update($, isHidden, () => false)
+    if (hasBand(await surfaceList($))) return {} // полоса перерисуется сама
     const why: string[] = [] // почему не встали панель и карточка — пишем под текстом
     try {
       const opened = await $.ui.open({ id: PANE, title: 'Лимиты' })
@@ -347,17 +358,31 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Над полем ввода (терминал и десктоп): сколько агентов работает и сколько стоит запрос
+  // Над полем ввода (терминал и десктоп): полоски лимитов, под ними — агенты и стоимость.
+  // «Скрыть» убирает полоски до следующего /limits, строка агентов остаётся
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const s = await read($, snap)
-    const { Box, Text } = $.ui.resolve(e)
+    const showBars = s.limits.length > 0 && !(await read($, isHidden))
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
+    const hide = async () => {
+      await update($, isHidden, () => true)
+    }
     const parts = [`${s.isBusy ? '⏳' : '🤖'} Агентов: ${s.agents}`]
     if (s.requestUsd !== null) parts.push(`💸 ${s.isBusy ? 'Запрос сейчас' : 'Запрос'}: ${money(s.requestUsd)}`)
     if (s.totalUsd !== null) parts.push(`Σ Сессия: ${money(s.totalUsd)} (по ценам API)`)
     return (
-      <Box flexDirection="row" flexWrap="wrap">
-        <Text dimColor>{parts.join('  ·  ')}</Text>
+      <Box flexDirection="column">
+        {showBars && limitRows(ui, s)}
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+          <Text dimColor>{parts.join('  ·  ')}</Text>
+          {showBars && (
+            <Button key="hide" role="dismiss" onPress={hide}>
+              Скрыть
+            </Button>
+          )}
+        </Box>
       </Box>
     )
   })

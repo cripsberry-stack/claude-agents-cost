@@ -1,12 +1,14 @@
 # agents-cost
 
-Right above the input box (terminal and desktop app), one quiet line shows how many agents are running and what the current request costs at API prices — live while Claude works:
+Right above the input box (terminal and desktop app) sit your plan's limit bars, and under them one quiet line with how many agents are running and what the current request costs at API prices — live while Claude works:
 
 ```
-⏳ Агентов: 2  ·  💸 Запрос сейчас: $0.30  ·  Σ Сессия: $0.80 (по ценам API)
+5ч      ███░░░░░░░  28%   сброс через 1ч 10м
+Неделя  ███████░░░  66%   сброс через 12ч 10м
+⏳ Агентов: 2  ·  💸 Запрос сейчас: $0.30  ·  Σ Сессия: $0.80 (по ценам API)   [Скрыть]
 ```
 
-Type `/limits` for the **«Лимиты»** panel. Claude Code mod that opens a **«Лимиты»** panel above the prompt (on every surface: terminal, desktop, and the mobile/web apps) and pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
+**Скрыть** hides the bars (the agents line stays) until you type `/limits`, which brings them back. VS Code has no band above the input, so there the bars open as a side panel; the mobile app gets them as a chat card. Claude Code mod that opens a **«Лимиты»** panel above the prompt (on every surface: terminal, desktop, and the mobile/web apps) and pins a status line under the prompt showing how many agents are running right now, what the current request and the whole session would cost at API prices, and your plan's usage limits — no need to dig through settings:
 
 ```
 ⏳ Агентов: 2  ·  💸 Запрос: $0.30  ·  Σ по API: $0.80  ·  5ч: 24% (↻ 2ч 10м)  ·  ⚠️7д: 86% (↻ 3д 4ч)
