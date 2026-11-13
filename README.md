@@ -78,3 +78,17 @@ Two third-party skills, credited and licensed as their authors set: `/unslop` (t
 ```
 /plugin install craft-skills --marketplace cripsberry-stack/claude-agents-cost
 ```
+
+## Status line under the input box (Windows)
+
+`statusline/statusline.ps1` is a Claude Code status line — the line the desktop app and the terminal draw right under the input box:
+
+```
+🤖 2 · ■■■■□□□□ 49% · 5ч 75% ↻2ч10м · нед 46% ↻3д4ч · 💸 $0.30 · Σ $4.33 API
+```
+
+Agents (from this plugin, when installed), context fill, the 5-hour and weekly limits with time to reset, what the current request cost and the whole session at API prices. Copy it to `~/.claude/statusline.ps1` and add to `~/.claude/settings.json`:
+
+```json
+"statusLine": { "type": "command", "command": "powershell -NoProfile -File C:/Users/<you>/.claude/statusline.ps1", "refreshInterval": 2 }
+```
